@@ -1,13 +1,10 @@
-// src/app/page.js
-// Main entry point - handles auth state and routing
-
 'use client';
-
 import { useState, useEffect } from 'react';
-import { onAuthChange } from '../firebase';
-import LandingPage from '../components/LandingPage';
-import Auth from '../components/Auth';
-import Dashboard from '../components/Dashboard';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth } from '@/firebase';
+import LandingPage from '@/components/LandingPage';
+import Auth from '@/components/Auth';
+import Dashboard from '@/components/Dashboard';
 
 export default function Home() {
   const [user, setUser] = useState(null);
@@ -16,54 +13,71 @@ export default function Home() {
   const [authMode, setAuthMode] = useState('login');
 
   useEffect(() => {
-    const unsubscribe = onAuthChange((firebaseUser) => {
-      setUser(firebaseUser);
+    // Listen to auth state changes
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      console.log('Auth state changed:', currentUser?.email || 'No user');
+      setUser(currentUser);
       setLoading(false);
+      
+      // If user just logged in, close auth modal
+      if (currentUser) {
+        setShowAuth(false);
+      }
     });
 
-    return unsubscribe;
+    // Cleanup subscription
+    return () => unsubscribe();
   }, []);
 
-  const handleShowAuth = (mode) => {
+  const handleShowAuth = (mode = 'login') => {
     setAuthMode(mode);
     setShowAuth(true);
   };
 
-  const handleAuthSuccess = () => {
+  const handleCloseAuth = () => {
     setShowAuth(false);
   };
 
-  const handleLogout = () => {
-    setUser(null);
+  const handleLogout = async () => {
+    try {
+      console.log('Logging out...');
+      await signOut(auth);
+      setUser(null); // ✅ Explicitly clear user state
+      setShowAuth(false);
+      console.log('Logged out successfully');
+    } catch (error) {
+      console.error('Logout error:', error);
+      alert('Failed to logout. Please try again.');
+    }
   };
 
+  // Show loading screen while checking auth state
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-purple-50 to-pink-50">
+      <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 text-lg">Loading Lookbook Pro...</p>
+          <div className="w-16 h-16 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600 font-semibold">Loading...</p>
         </div>
       </div>
     );
   }
 
+  // Show dashboard if user is logged in
+  if (user) {
+    return <Dashboard user={user} onLogout={handleLogout} />;
+  }
+
+  // Show landing page if not logged in
   return (
-    <div>
-      {user ? (
-        <Dashboard user={user} onLogout={handleLogout} />
-      ) : (
-        <>
-          <LandingPage onShowAuth={handleShowAuth} />
-          {showAuth && (
-            <Auth
-              onClose={() => setShowAuth(false)}
-              initialMode={authMode}
-              onSuccess={handleAuthSuccess}
-            />
-          )}
-        </>
+    <>
+      <LandingPage onShowAuth={handleShowAuth} />
+      {showAuth && (
+        <Auth 
+          onClose={handleCloseAuth} 
+          initialMode={authMode}
+        />
       )}
-    </div>
+    </>
   );
 }
